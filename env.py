@@ -1,4 +1,5 @@
 import copy
+import torch
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -6,6 +7,7 @@ from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 
 from reward import Reward
+from utils import get_load
 
 
 def generate_pms(num_pms, pm_cpu_range, pm_mem_range):
@@ -50,85 +52,45 @@ class VirtualMachineClusterEnv:
     def __init__(self, pms, vms):
         self.pms = pms
         self.vms = vms
-        self.state = {pm['Pid']: [] for pm in self.pms}
+        self.develop = {pm['Pid']: [] for pm in self.pms}
         for vm in self.vms:
             while True:
                 pm = np.random.choice(pms)
-                used_cpu = sum(v['Cpu'] for v in self.state[pm['Pid']])
-                used_mem = sum(v['Mem'] for v in self.state[pm['Pid']])
+                used_cpu = sum(v['Cpu'] for v in self.develop[pm['Pid']])
+                used_mem = sum(v['Mem'] for v in self.develop[pm['Pid']])
                 if (used_cpu + vm['Cpu'] <= pm['Cpu']) and (used_mem + vm['Mem'] <= pm['Mem']):
-                    self.state[pm['Pid']].append(vm)
+                    self.develop[pm['Pid']].append(vm)
                     break
 
+    def get_state(self, develop=None):
+        state_matrix = np.zeros((len(self.pms), 3))
+        if develop is None:
+            develop = self.develop
+        for pm_id, vm_list in develop.items():
+            total_cpu = sum(vm['Cpu'] for vm in vm_list)
+            total_mem = sum(vm['Mem'] for vm in vm_list)
+            state_matrix[pm_id] = [total_cpu, total_mem, len(vm_list)]
+        return np.array(state_matrix.flatten())
+
     def step(self, action_idx):
-        action_dim = len(pms) * (len(pms) - 1) * len(vms) - 1
-        if action_idx > action_dim:
-            raise ValueError("Invalid action index")
-        vm_id = action_idx // len(pms) * (len(pms) - 1)
-        remainder = action_idx % (len(pms) * (len(pms) - 1))
-        src_pm_id = remainder // (len(pms) - 1)
-        dst_pm_id = remainder % (len(pms) - 1)
-        target_vm = None
-        for vm in self.state[src_pm_id]:
-            if vm['Vid'] == vm_id:
-                target_vm = vm
-                break
+        max_load_pm = max(self.pms, key=lambda pm: get_load(self.develop, pm['Pid']))['Pid']
+        sorted_pm = sorted(self.pms, key=lambda pm: get_load(self.develop, pm['Pid']))
+        low_load_pm_list = [pm['Pid'] for pm in sorted_pm[:5]]
+
+        index = int(np.random.rand() * len(self.develop[max_load_pm]))
+        vm_id = self.develop[max_load_pm][index]['Vid']
+        dst_pm_index = action_idx % 5
+        src_pm_id = max_load_pm
+        dst_pm_id = low_load_pm_list[dst_pm_index]
+
+        target_vm = next((vm for vm in self.develop[src_pm_id] if vm['Vid'] == vm_id), None)
         if target_vm is None:
             raise ValueError("Target Vm is None")
-        next_state = copy.deepcopy(self.state)
-        next_state[src_pm_id].remove(target_vm)
-        next_state[dst_pm_id].append(target_vm)
-        reward = Reward.compute_reward(self.state, next_state, self.pms)
-        done = False
 
-
-pms = generate_pms(50, (8, 64), (32, 256))
-vms = generate_vms(200, 64, 256)
-vms, centers = cluster_vms(vms, 3)
-
-env = VirtualMachineClusterEnv(pms, vms)
-
-
-# cpus = [vm['Cpu'] for vm in vms]
-# mems = [vm['Mem'] for vm in vms]
-# plt.scatter(cpus, mems, alpha=0.6)
-# plt.xlabel("CPU Cores")
-# plt.ylabel("Memory (GB)")
-# plt.title("Randomly Generated VMs (Before Clustering)")
-# plt.show()
-#
-# categories = [vm["Category"] for vm in vms]
-# plt.scatter(cpus, mems, c=categories, cmap='viridis', alpha=0.6)
-# plt.xlabel("CPU Cores")
-# plt.ylabel("Memory (GB)")
-# plt.title("VMs After K-means Clustering (3 Categories)")
-# plt.colorbar(label="Category")
-# plt.show()
-
-
-# def generate_requests(time_steps, vms, request_rate=0.3, avg_lifetime=5):
-#     requests = []
-#     active_vms = {}
-#
-#     for t in range(time_steps):
-#         # 新请求虚拟机
-#         if np.random.rand() < request_rate:
-#             vm = np.random.choice(vms)
-#             lifetime = np.random.exponential(avg_lifetime)
-#             requests.append({
-#                 "time": t,
-#                 "vm": vm,
-#                 "type": "start",
-#                 "lifetime": int(lifetime)
-#             })
-#             active_vms[vm["Vid"]] = t + lifetime
-#         # 移除过期虚拟机
-#         expired_vids = [vid for vid, end_time in active_vms.items() if end_time <= t]
-#         for vid in expired_vids:
-#             requests.append({
-#                 "time": t,
-#                 "vm": next(vm for vm in vms if vm["Vid"] == vid),
-#                 "type": "stop"
-#             })
-#             del active_vms[vid]
-#     return requests
+        next_develop = copy.deepcopy(self.develop)
+        next_develop[src_pm_id].remove(target_vm)
+        next_develop[dst_pm_id].append(target_vm)
+        reward = Reward.compute_reward(self.develop, next_develop, self.pms,
+                                       (0, 50), (0, 200), (-1.0, 0.0), (0.0, 2.0))
+        self.develop = next_develop
+        return self.get_state(next_develop), reward

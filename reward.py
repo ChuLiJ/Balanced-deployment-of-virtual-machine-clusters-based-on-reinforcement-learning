@@ -4,6 +4,7 @@ from scipy.stats import entropy
 
 from utils import normalize
 
+
 class Reward:
 
     @classmethod
@@ -18,17 +19,16 @@ class Reward:
     def nom(cls, old_state, new_state):
         migration_count = 0
         for pid in old_state:
-            migration_count += (len(set(old_state[pid])) -
-                                len(set(old_state[pid]) & set(new_state.get(pid, []))))
+            migration_count += (len(old_state[pid]) - len(new_state.get(pid, [])))
         return migration_count
 
     @classmethod
     def ei(cls, state, nums_category=3):
         category_distribution = []
-        total_vms = sum(len(vm) for vm in state.value)
+        total_vms = sum(len(vm) for vm in state.values())
         if total_vms == 0:
             return 0.0
-        for pid, vm_list in state:
+        for pid, vm_list in state.items():
             if not vm_list:
                 continue
             category_count = [0] * nums_category
@@ -68,4 +68,6 @@ class Reward:
         nom_norm = normalize(cls.nom(old_state, new_state), *NOM_RANGE)
         ei_norm = normalize(cls.ei(new_state), *EI_RANGE)
         si_norm = normalize(cls.si(new_state, pms), *SI_RANGE)
-        return -0.4 * nopms_norm - 0.3 * nom_norm + 0.2 * ei_norm - 0.1 * si_norm
+        reward = -0.5 * nopms_norm - 0.0 * nom_norm + 0.3 * ei_norm - 0.2 * si_norm
+        # print(f"Reward breakdown: nopms={nopms_norm}, nom={nom_norm}, ei={ei_norm}, si={si_norm}, total={reward}")
+        return reward
