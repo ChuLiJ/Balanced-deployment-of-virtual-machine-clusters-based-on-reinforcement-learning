@@ -68,6 +68,6 @@ class Reward:
         nom_norm = normalize(cls.nom(old_state, new_state), *NOM_RANGE)
         ei_norm = normalize(cls.ei(new_state), *EI_RANGE)
         si_norm = normalize(cls.si(new_state, pms), *SI_RANGE)
-        reward = -0.5 * nopms_norm - 0.0 * nom_norm + 0.3 * ei_norm - 0.2 * si_norm
+        reward = -0.2 * nopms_norm - 0.0 * nom_norm - 0.6 * ei_norm - 0.4 * si_norm
         # print(f"Reward breakdown: nopms={nopms_norm}, nom={nom_norm}, ei={ei_norm}, si={si_norm}, total={reward}")
         return reward

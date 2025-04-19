@@ -1,5 +1,15 @@
+import torch
 import numpy as np
 import matplotlib.pyplot as plt
+
+
+def isdeploy(vm, pm, develop):
+    used_cpu = sum(v['Cpu'] for v in develop[pm['Pid']])
+    used_mem = sum(v['Mem'] for v in develop[pm['Pid']])
+    if (used_cpu + vm['Cpu'] <= pm['Cpu']) and (used_mem + vm['Mem'] <= pm['Mem']):
+        return True
+    return False
+
 
 def normalize(value, min_val, max_val):
     return (value - min_val) / (max_val - min_val + 1e-8)
@@ -9,9 +19,10 @@ def get_load(develop, pm_id):
     return (sum(vm['Cpu'] for vm in develop[pm_id]) + sum(vm['Mem'] for vm in develop[pm_id])) / 2
 
 
-def print_distribution(pms, env):
+def print_distribution(pms, develop, name):
+    plt.figure()
     category_counts = {pm['Pid']: {i: 0 for i in range(3)} for pm in pms}
-    for pm_id, vm_list in env.develop.items():
+    for pm_id, vm_list in develop.items():
         for vm in vm_list:
             category_counts[pm_id][vm['Category']] += 1
 
@@ -27,7 +38,7 @@ def print_distribution(pms, env):
 
     plt.xlabel('Physical Machine ID')
     plt.ylabel('Number of Virtual Machines')
-    plt.title('Number of VMs on Each PM by Category')
+    plt.title('Number of VMs on Each PM by Category based on {}'.format(name))
     plt.legend()
     plt.show()
 
@@ -39,6 +50,27 @@ def moving_average(a, window_size=9):
     begin = np.cumsum(a[:window_size-1])[::2] / r
     end = (np.cumsum(a[:-window_size:-1])[::2] / r)[::-1]
     return np.concatenate((begin, middle, end))
+
+
+def print_returns(episodes_list, return_list, name, env_name):
+    plt.figure()
+    plt.plot(episodes_list, return_list)
+    plt.xlabel('Episodes')
+    plt.ylabel('Returns')
+    plt.title('{0} on {1}'.format(name, env_name))
+    plt.legend()
+    plt.show()
+
+
+def compute_advantage(gamma, lmbda, td_delta):
+    td_delta = td_delta.detach().numpy()
+    advantage_list = []
+    advantage = 0.0
+    for delta in td_delta[::-1]:
+        advantage = gamma * lmbda * advantage + delta
+        advantage_list.append(advantage)
+    advantage_list.reverse()
+    return torch.tensor(advantage_list, dtype=torch.float)
 
 # pms = generate_pms(50, (8, 64), (32, 256))
 # vms = generate_vms(200, 64, 256)
