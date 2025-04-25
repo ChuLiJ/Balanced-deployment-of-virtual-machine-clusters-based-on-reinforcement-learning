@@ -44,7 +44,7 @@ class Reward:
             js = 0.5 * (entropy(dist, m) + entropy(global_dist, m))
             js_divs.append(js)
 
-        return -np.mean(js_divs)
+        return np.mean(js_divs)
 
     @classmethod
     def si(cls, state, pms):
@@ -63,11 +63,11 @@ class Reward:
         return np.std(used_cpu_list) + np.std(used_mem_list)
 
     @classmethod
-    def compute_reward(cls, old_state, new_state, pms, NOPMS_RANGE, NOM_RANGE, EI_RANGE, SI_RANGE):
-        nopms_norm = normalize(cls.nopms(new_state), *NOPMS_RANGE)
-        nom_norm = normalize(cls.nom(old_state, new_state), *NOM_RANGE)
-        ei_norm = normalize(cls.ei(new_state), *EI_RANGE)
-        si_norm = normalize(cls.si(new_state, pms), *SI_RANGE)
-        reward = -0.2 * nopms_norm - 0.0 * nom_norm - 0.6 * ei_norm - 0.4 * si_norm
+    def compute_reward(cls, nopms, nom, ei, si):
+        # nopms_norm = normalize(cls.nopms(new_state), *NOPMS_RANGE)
+        # nom_norm = normalize(cls.nom(old_state, new_state), *NOM_RANGE)
+        # ei_norm = normalize(cls.ei(new_state), *EI_RANGE)
+        # si_norm = normalize(cls.si(new_state, pms), *SI_RANGE)
+        reward = 0.1 * nopms - 0.0 * nom + 10 * ei + 10 * si
         # print(f"Reward breakdown: nopms={nopms_norm}, nom={nom_norm}, ei={ei_norm}, si={si_norm}, total={reward}")
         return reward

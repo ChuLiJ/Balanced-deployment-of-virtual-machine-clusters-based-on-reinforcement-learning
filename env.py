@@ -48,6 +48,10 @@ def cluster_vms(vms, n_cluster=3):
 
 class VirtualMachineClusterEnv:
     def __init__(self, pms, vms):
+        self.nopms = 0
+        self.nom = 0
+        self.ei = 0
+        self.si = 0
         self.num_pm = len(pms)
         self.pms = pms
         self.vms = vms
@@ -72,7 +76,7 @@ class VirtualMachineClusterEnv:
             state_matrix[pm_id] = [total_cpu, total_mem, len(vm_list)]
         return np.array(state_matrix.flatten())
 
-    def step(self, action_idx):
+    def step(self, action_idx, device=None):
         max_load_pm = max(self.pms, key=lambda pm: get_load(self.develop, pm['Pid']))['Pid']
         sorted_pm = sorted(self.pms, key=lambda pm: get_load(self.develop, pm['Pid']))
         low_load_pm_list = [pm['Pid'] for pm in sorted_pm]
@@ -97,4 +101,33 @@ class VirtualMachineClusterEnv:
         reward = Reward.compute_reward(self.develop, next_develop, self.pms,
                                        (0, 50), (0, 200), (-1.0, 0.0), (0.0, 2.0))
         self.develop = next_develop
+        return self.get_state(next_develop), reward
+
+    def step_ppo(self, action, device=None):
+        src_pm_id = int(action[0] * (self.num_pm - 1))
+        dst_pm_id = int(action[2] * (self.num_pm - 1))
+        length = len(self.develop[src_pm_id])
+
+        if dst_pm_id == src_pm_id or length == 0:
+            return self.get_state(self.develop), -0.5
+
+        vm_id = int(action[1] * (length - 1))
+        vm = self.develop[src_pm_id][vm_id]
+
+        if not isdeploy(vm, self.pms[dst_pm_id], self.develop):
+            return self.get_state(self.develop), -0.0
+
+        next_develop = copy.deepcopy(self.develop)
+        next_develop[src_pm_id].remove(vm)
+        next_develop[dst_pm_id].append(vm)
+        next_nopms = Reward.nopms(next_develop)
+        next_ei = Reward.ei(next_develop)
+        next_si = Reward.si(next_develop, self.pms)
+        reward = Reward.compute_reward(next_nopms-self.nopms, 0, next_ei-self.ei, next_si-self.si)
+
+        self.develop = next_develop
+        self.nopms = next_nopms
+        self.ei = next_ei
+        self.si = next_si
+
         return self.get_state(next_develop), reward

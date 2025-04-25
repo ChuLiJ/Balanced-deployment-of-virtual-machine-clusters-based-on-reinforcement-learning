@@ -58,7 +58,6 @@ def print_returns(episodes_list, return_list, name, env_name):
     plt.xlabel('Episodes')
     plt.ylabel('Returns')
     plt.title('{0} on {1}'.format(name, env_name))
-    plt.legend()
     plt.show()
 
 
