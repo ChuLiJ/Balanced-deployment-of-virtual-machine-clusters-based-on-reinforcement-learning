@@ -19,6 +19,14 @@ def get_load(develop, pm_id):
     return (sum(vm['Cpu'] for vm in develop[pm_id]) + sum(vm['Mem'] for vm in develop[pm_id])) / 2
 
 
+def get_cpu_load(develop, pm_id):
+    return sum(vm['Cpu'] for vm in develop[pm_id])
+
+
+def get_mem_load(develop, pm_id):
+    return sum(vm['Mem'] for vm in develop[pm_id])
+
+
 def print_distribution(pms, develop, name):
     plt.figure()
     category_counts = {pm['Pid']: {i: 0 for i in range(3)} for pm in pms}
@@ -58,6 +66,32 @@ def print_returns(episodes_list, return_list, name, env_name):
     plt.xlabel('Episodes')
     plt.ylabel('Returns')
     plt.title('{0} on {1}'.format(name, env_name))
+    plt.show()
+
+
+def print_utilization(develop, pms, name):
+    cpu_utilization = []
+    mem_utilization = []
+    for pm in pms:
+        cpu_utilization.append(get_cpu_load(develop, pm['Pid']) / pm['Cpu'] * 100)
+        mem_utilization.append(get_mem_load(develop, pm['Pid']) / pm['Mem'] * 100)
+
+    x = range(len(pms))
+    bar_width = 0.35
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+
+    ax.bar([i - bar_width / 2 for i in x], cpu_utilization, bar_width, label='CPU Utilization', color='b')
+    ax.bar([i + bar_width / 2 for i in x], mem_utilization, bar_width, label='Memory Utilization', color='r')
+
+    ax.set_xlabel('Physical Machine PID')
+    ax.set_ylabel('Utilization Percentage (%)')
+    ax.set_title('CPU and Memory Utilization based on {}'.format(name))
+    ax.legend()
+
+    ax.grid(True, linestyle='--', alpha=0.7)
+
+    plt.tight_layout()
     plt.show()
 
 

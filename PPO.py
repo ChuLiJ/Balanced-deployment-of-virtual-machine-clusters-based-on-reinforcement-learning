@@ -100,4 +100,4 @@ class PPO:
             torch.nn.utils.clip_grad_norm_(self.actor.parameters(), max_norm=0.5)
             torch.nn.utils.clip_grad_norm_(self.critic.parameters(), max_norm=0.5)
 
-        # print("actor_loss: {0}, critic_loss: {1}".format(al, cl))
+        return actor_loss, critic_loss

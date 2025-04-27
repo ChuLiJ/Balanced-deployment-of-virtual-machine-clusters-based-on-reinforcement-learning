@@ -7,9 +7,8 @@ import numpy as np
 
 
 class ReplayBuffer:
-    def __init__(self, capacity, device):
+    def __init__(self, capacity):
         self.buffer = collections.deque(maxlen=capacity)
-        self.device = device
 
     def add(self, state, action, reward, next_state):
         self.buffer.append((state, action, reward, next_state))
@@ -29,8 +28,8 @@ class QNet(torch.nn.Module):
         super(QNet, self).__init__()
         self.fc1 = torch.nn.Linear(state_dim, 32)
         self.fc2 = torch.nn.Linear(32, 64)
-        self.fc3 = torch.nn.Linear(64, 64)
-        self.fc4 = torch.nn.Linear(64, action_dim)
+        self.fc3 = torch.nn.Linear(64, 32)
+        self.fc4 = torch.nn.Linear(32, action_dim)
         self.to(device)
 
     def forward(self, x):
@@ -38,6 +37,33 @@ class QNet(torch.nn.Module):
         x = F.relu(self.fc2(x))
         x = F.relu(self.fc3(x))
         return self.fc4(x)
+
+
+class DuelingQNet(torch.nn.Module):
+    def __init__(self, state_dim, action_dim, device):
+        super(DuelingQNet, self).__init__()
+        self.fc1 = torch.nn.Linear(state_dim, 64)
+        self.fc2 = torch.nn.Linear(64, 128)
+
+        self.V_stream = torch.nn.Linear(128, 64)
+        self.V = torch.nn.Linear(64, 1)
+
+        self.A_stream = torch.nn.Linear(128, 64)
+        self.A = torch.nn.Linear(64, action_dim)
+
+        self.to(device)
+
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+
+        V = F.relu(self.V_stream(x))
+        V = self.V(V)
+
+        A = F.relu(self.A_stream(x))
+        A = self.A(A)
+        Q = V + (A - A.mean(dim=1, keepdim=True))
+        return Q
 
 
 class ConvolutionalQnet(torch.nn.Module):
@@ -94,7 +120,53 @@ class DQN:
         loss.backward()
         self.optimizer.step()
 
+        self.count += 1
         if self.count % self.target_update == 0:
             self.target_q_net.load_state_dict(self.q_net.state_dict())
 
+        return loss.item()
+
+
+class DoubleDQN(DQN):
+    def __init__(self, state_dim, action_dim, learning_rate, gamma, epsilon, target_update, device):
+        super(DoubleDQN, self).__init__(state_dim, action_dim, learning_rate, gamma, epsilon, target_update, device)
+
+    def update(self, batch):
+        states = torch.tensor(batch["states"], dtype=torch.float).to(self.device)
+        actions = torch.tensor(batch["actions"], dtype=torch.long).view(-1, 1).to(self.device)
+        rewards = torch.tensor(batch["rewards"], dtype=torch.float).view(-1, 1).to(self.device)
+        next_states = torch.tensor(batch["next_states"], dtype=torch.float).to(self.device)
+
+        q_values = self.q_net(states).gather(1, actions)
+
+        with torch.no_grad():
+            next_actions = self.q_net(next_states).argmax(dim=1, keepdims=True)  # 与普通DQN不同的地方
+            max_next_q_values = self.target_q_net(next_states).gather(1, next_actions)
+
+            q_targets = rewards + self.gamma * max_next_q_values
+
+        loss = F.mse_loss(q_values, q_targets)
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+
         self.count += 1
+        if self.count % self.target_update == 0:
+            self.target_q_net.load_state_dict(self.q_net.state_dict())
+
+        return loss.item()
+
+
+class DDDQN(DoubleDQN):
+    def __init__(self, state_dim, action_dim, learning_rate, gamma, epsilon, target_update, device):
+        super().__init__(state_dim, action_dim, learning_rate, gamma, epsilon, target_update, device)
+        self.q_net = DuelingQNet(state_dim, action_dim, device).to(device)
+        self.target_q_net = DuelingQNet(state_dim, action_dim, device).to(device)
+        self.optimizer = torch.optim.Adam(self.q_net.parameters(), lr=learning_rate)
+
+    def take_action(self, state, epsilon):
+        if np.random.rand() < epsilon:
+            return np.random.randint(self.action_dim)
+        state = np.array(state)
+        state = torch.tensor(state, dtype=torch.float).unsqueeze(0).to(self.device)
+        return self.q_net(state).argmax().item()

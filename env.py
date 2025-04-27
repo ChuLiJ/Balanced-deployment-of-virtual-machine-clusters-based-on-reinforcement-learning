@@ -5,7 +5,7 @@ from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 
 from reward import Reward
-from utils import get_load, isdeploy
+from utils import get_load, isdeploy, get_cpu_load, get_mem_load
 
 
 def generate_pms(num_pms, pm_cpu_range, pm_mem_range):
@@ -76,7 +76,64 @@ class VirtualMachineClusterEnv:
             state_matrix[pm_id] = [total_cpu, total_mem, len(vm_list)]
         return np.array(state_matrix.flatten())
 
-    def step(self, action_idx, device=None):
+    def step(self, action_dqn, action_ppo):
+        if action_dqn == 0:
+            return self.get_state(self.develop), 0.0
+
+        if action_dqn == 1:
+            src_pm_id = int(action_ppo[0] * (self.num_pm - 1))
+
+        if action_dqn == 2:
+            sorted_pm = sorted(self.pms, key=lambda pm: get_load(self.develop, pm['Pid']))
+            src_pm_id = sorted_pm[int(action_ppo[0] * 5)]['Pid']
+
+        if action_dqn == 3:
+            sorted_pm = sorted(self.pms, key=lambda pm: get_cpu_load(self.develop, pm['Pid']))
+            src_pm_id = sorted_pm[int(action_ppo[0] * 5)]['Pid']
+
+        if action_dqn == 4:
+            sorted_pm = sorted(self.pms, key=lambda pm: get_mem_load(self.develop, pm['Pid']))
+            src_pm_id = sorted_pm[int(action_ppo[0] * 5)]['Pid']
+
+        dst_pm_id = int(action_ppo[2] * (self.num_pm - 1))
+        length = len(self.develop[src_pm_id])
+
+        if length == 0:
+            return self.get_state(self.develop), -0.1
+
+        if dst_pm_id == src_pm_id:
+            return self.get_state(self.develop), -0.5
+
+        vm_id = int(action_ppo[1] * (length - 1))
+        vm = self.develop[src_pm_id][vm_id]
+
+        if not isdeploy(vm, self.pms[dst_pm_id], self.develop):
+            return self.get_state(self.develop), -0.1
+
+        next_develop = copy.deepcopy(self.develop)
+        next_develop[src_pm_id].remove(vm)
+        next_develop[dst_pm_id].append(vm)
+        next_nopms = Reward.nopms(next_develop)
+        next_ei = Reward.ei(next_develop)
+        next_si = Reward.si(next_develop, self.pms)
+        reward = Reward.compute_reward(next_nopms - self.nopms, 0, next_ei - self.ei, next_si - self.si)
+
+        if self.nopms == 0 and self.ei == 0 and self.si == 0:
+            self.develop = next_develop
+            self.nopms = next_nopms
+            self.ei = next_ei
+            self.si = next_si
+
+            return self.get_state(next_develop), 0.0
+
+        self.develop = next_develop
+        self.nopms = next_nopms
+        self.ei = next_ei
+        self.si = next_si
+
+        return self.get_state(next_develop), reward
+
+    def step_DQN(self, action_idx, device=None):
         max_load_pm = max(self.pms, key=lambda pm: get_load(self.develop, pm['Pid']))['Pid']
         sorted_pm = sorted(self.pms, key=lambda pm: get_load(self.develop, pm['Pid']))
         low_load_pm_list = [pm['Pid'] for pm in sorted_pm]
