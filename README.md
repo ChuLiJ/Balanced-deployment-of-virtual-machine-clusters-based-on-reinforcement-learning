@@ -7,29 +7,30 @@
 项目使用强化学习算法来解决虚拟机迁移问题，您可以使用这些模块进行实验、调试和优化模型。
 
 ## 项目结构
+```markdown
 Graduation design
 ├── system
-│ ├── polls
-│ └── system
-│ ├── init.py
-│ ├── asgi.py
-│ ├── settings.py
-│ ├── urls.py
-│ ├── wsgi.py
+│   ├── polls
+│   └── system
+│       ├── __init__.py
+│       ├── asgi.py
+│       ├── settings.py
+│       ├── urls.py
+│       ├── wsgi.py
 ├── VirtualMachineRentalSystem
-│ ├── migrations
-│ ├── rl_core
-│ ├── static
-│ ├── templates
-│ ├── init.py
-│ ├── admin.py
-│ ├── apps.py
-│ ├── forms.py
-│ ├── models.py
-│ ├── serializers.py
-│ ├── tests.py
-│ ├── urls.py
-│ └── views.py
+│   ├── migrations
+│   ├── rl_core
+│   ├── static
+│   ├── templates
+│   ├── __init__.py
+│   ├── admin.py
+│   ├── apps.py
+│   ├── forms.py
+│   ├── models.py
+│   ├── serializers.py
+│   ├── tests.py
+│   ├── urls.py
+│   └── views.py
 ├── db.sqlite3
 └── manage.py
 config.py
@@ -40,6 +41,7 @@ main.py
 PPO.py
 reward.py
 utils.py
+```
 
 ## 使用说明
 
@@ -57,11 +59,12 @@ utils.py
    py manage.py runserver
 3. 访问 http://127.0.0.1:8000 即可访问系统界面。
 
-安装依赖
-确保您的环境中安装了以下依赖：
-pip install -r requirements.txt
+### 安装依赖
 
-许可证
-MIT License
+确保您的环境中安装了以下依赖：
+   ```bash
+   pip install -r requirements.txt
+```
+## 许可证 MIT License
 
 您可以根据需要对这个 README 进行修改和扩展，加入更多的细节或使用示例。
