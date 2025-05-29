@@ -55,6 +55,10 @@ class PPO:
         self.epochs = epochs
         self.eps = eps
         self.device = device
+        self.actor_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.actor_optimizer, mode='min', factor=0.5,
+                                                                          patience=5)
+        self.critic_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.critic_optimizer, mode='min', factor=0.5
+                                                                           , patience=5)
 
     def take_action(self, state):
         state = torch.tensor([state], dtype=torch.float).to(self.device)
@@ -99,5 +103,8 @@ class PPO:
 
             torch.nn.utils.clip_grad_norm_(self.actor.parameters(), max_norm=0.5)
             torch.nn.utils.clip_grad_norm_(self.critic.parameters(), max_norm=0.5)
+
+        self.actor_scheduler.step(actor_loss)
+        self.critic_scheduler.step(critic_loss)
 
         return actor_loss, critic_loss

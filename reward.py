@@ -16,11 +16,8 @@ class Reward:
         return nums_pm
 
     @classmethod
-    def nom(cls, old_state, new_state):
-        migration_count = 0
-        for pid in old_state:
-            migration_count += (len(old_state[pid]) - len(new_state.get(pid, [])))
-        return migration_count
+    def nom(cls, state, src_pm_id, dst_pm_id):
+        return len(state[dst_pm_id]) - len(state[src_pm_id]) + 2
 
     @classmethod
     def ei(cls, state, nums_category=3):
@@ -68,6 +65,6 @@ class Reward:
         # nom_norm = normalize(cls.nom(old_state, new_state), *NOM_RANGE)
         # ei_norm = normalize(cls.ei(new_state), *EI_RANGE)
         # si_norm = normalize(cls.si(new_state, pms), *SI_RANGE)
-        reward = 0.1 * nopms - 0.0 * nom + 10 * ei + 10 * si
+        reward = -1 * nopms - 1 * nom + 100 * ei + 100 * si
         # print(f"Reward breakdown: nopms={nopms_norm}, nom={nom_norm}, ei={ei_norm}, si={si_norm}, total={reward}")
         return reward

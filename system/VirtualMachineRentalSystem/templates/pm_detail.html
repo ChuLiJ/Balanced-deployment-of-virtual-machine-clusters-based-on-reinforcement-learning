@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>物理机详情 - {{ pm.name }}</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
+    <style>
+        .detail-container {
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+            border: 1px solid #ddd;
+            background-color: #f9f9f9;
+            text-align: center;
+        }
+        canvas {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="detail-container">
+        <h2>物理机详情 - {{ pm.name }}</h2>
+
+        <div>
+            <canvas id="cpuChart" width="400" height="400"></canvas>
+        </div>
+
+        <div>
+            <canvas id="memChart" width="400" height="400"></canvas>
+        </div>
+
+        <a href="{% url 'vms' %}" style="display: block; margin-top: 20px;">返回列表</a>
+    </div>
+
+    <script>
+        const pmData = {
+            name: "{{ pm.name }}",
+            total_cpu: {{ pm.cpu }},
+            used_cpu: {{ pm.used_cpu }},
+            total_mem: {{ pm.memory }},
+            used_mem: {{ pm.used_mem }}
+        };
+
+        const remaining_cpu = pmData.total_cpu - pmData.used_cpu;
+        const remaining_mem = pmData.total_mem - pmData.used_mem;
+
+        // 配置对象，避免重复
+        const commonOptions = (titleText) => ({
+            plugins: {
+                title: {
+                    display: true,
+                    text: titleText,
+                    font: {
+                        size: 20
+                    }
+                },
+                datalabels: {
+                    color: '#000',
+                    font: {
+                        weight: 'bold',
+                        size: 16
+                    },
+                    formatter: (value, context) => {
+                        const sum = context.chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
+                        const percentage = (value / sum * 100).toFixed(1) + '%';
+                        return percentage;
+                    }
+                }
+            }
+        });
+
+        // CPU使用图
+        new Chart(document.getElementById('cpuChart'), {
+            type: 'doughnut',
+            data: {
+                labels: ['已使用 CPU', '剩余 CPU'],
+                datasets: [{
+                    label: 'CPU 使用情况',
+                    data: [pmData.used_cpu, remaining_cpu],
+                    backgroundColor: ['#ff6384', '#36a2eb']
+                }]
+            },
+            options: commonOptions('CPU 使用情况'),
+            plugins: [ChartDataLabels]
+        });
+
+        // 内存使用图
+        new Chart(document.getElementById('memChart'), {
+            type: 'doughnut',
+            data: {
+                labels: ['已使用内存', '剩余内存'],
+                datasets: [{
+                    label: '内存 使用情况',
+                    data: [pmData.used_mem, remaining_mem],
+                    backgroundColor: ['#4bc0c0', '#ffcd56']
+                }]
+            },
+            options: commonOptions('内存 使用情况'),
+            plugins: [ChartDataLabels]
+        });
+    </script>
+</body>
+</html>

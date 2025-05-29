@@ -1,0 +1,118 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+    <meta charset="UTF-8">
+    <title>艾梵智进(AiVance)智能管理平台</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+        header {
+            background-image: url("{% static 'image/background.png' %}");
+            background-size: cover;
+            height: 180px;
+            color: white;
+            display: flex;
+            align-items: center;
+            padding-left: 2rem;
+            font-size: 1.8rem;
+            font-weight: bold;
+        }
+        .nav-link {
+            font-size: 1.1rem;
+        }
+        .card {
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        }
+    </style>
+</head>
+<body>
+
+<header style="text-align: center;">
+    艾梵智进(AiVance)智能管理平台
+</header>
+
+<div class="container mt-4">
+
+    <div class="d-flex justify-content-between align-items-center">
+        <div class="alert alert-info mb-3" role="alert">
+            👋 欢迎，尊敬的{{ name }}，今天是 {% now "Y年n月j日 l" %}
+        </div>
+        <a href="{% url 'login' %}" class="btn btn-outline-danger">退出登录</a>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-md-2">
+            <ul class="list-group">
+                <a href="{% url 'dashboard' %}" class="list-group-item list-group-item-action">📊 系统概览</a>
+                <a href="{% url 'pms' %}" class="list-group-item list-group-item-action">🖥️ 物理机资源统计</a>
+                <a href="{% url 'vms' %}" class="list-group-item list-group-item-action">💻 虚拟机资源统计</a>
+                <a href="{% url 'vms' %}" class="list-group-item list-group-item-action">🔄 资源调度</a>
+                <a href="{% url 'profile' %}" class="list-group-item list-group-item-action">👤 个人信息</a>
+                <a href="{% url 'vms' %}" class="list-group-item list-group-item-action">📋 日志记录</a>
+                <a href="{% url 'setting' %}" class="list-group-item list-group-item-action">⚙️ 系统设置</a>
+            </ul>
+        </div>
+
+        <div class="col-md-10">
+            <h4 class="mb-3">📊 系统概览</h4>
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <div class="card p-3 text-center">
+                        <h6>物理机总数</h6>
+                        <h3>{{ physical_machine_count }}</h3>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card p-3 text-center">
+                        <h6>虚拟机总数</h6>
+                        <h3>{{ virtual_machine_count }}</h3>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card p-3 text-center">
+                        <h6>平均资源负载</h6>
+                        <h3>{{ avg_load }}%</h3>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-4">
+                <h5>资源使用图表</h5>
+                <!-- 如果你有 chart.js 图表，可放这里 -->
+                <canvas id="resourceChart" height="100"></canvas>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- 可选：Chart.js 图表 -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    const Data = {
+        avg_load: {{ avg_load|default:"0" }},
+        cpu_usage: {{ cpu_usage|default:"0" }},
+        memory_usage: {{ memory_usage|default:"0" }},
+        disk_usage: {{ disk_usage|default:"0" }}
+    };
+
+    const ctx = document.getElementById('resourceChart').getContext('2d');
+    const resourceChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: ['CPU', '内存', '磁盘'],
+            datasets: [{
+                label: '使用率 (%)',
+                data: [Data.cpu_usage, Data.memory_usage, Data.disk_usage],
+                backgroundColor: ['#007bff', '#ffc107', '#28a745']
+            }]
+        }
+    });
+</script>
+
+</body>
+</html>

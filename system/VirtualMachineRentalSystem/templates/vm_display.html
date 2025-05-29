@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>虚拟机部署情况</title>
+    <style>
+        table {
+            width: 90%;
+            margin: auto;
+            border-collapse: collapse;
+        }
+        th, td {
+            border: 1px solid #aaa;
+            padding: 8px;
+            text-align: center;
+        }
+        th {
+            background-color: #ddd;
+        }
+    </style>
+</head>
+<body>
+    <h2 style="text-align: center;">虚拟机集群</h2>
+
+    <form method="post" action="{% url 'deploy_chart' %}" style="text-align: left">
+        {% csrf_token %}
+        <button type="submit">切换成图形展示</button>
+    </form>
+
+    <form method="post" action="{% url 'login' %}" style="text-align: right">
+        {% csrf_token %}
+        <button type="submit">退出登录</button>
+    </form>
+
+    <table>
+        <tr>
+            <th>虚拟机</th>
+            <th>CPU</th>
+            <th>内存</th>
+            <th>物理机</th>
+            <th>PM CPU使用/总量</th>
+            <th>PM 内存使用/总量</th>
+            <th>部署时间</th>
+            <th>部署方法</th>
+            <th>备注</th>
+        </tr>
+        {% for d in deployments %}
+        <tr>
+            <td>{{ d.vm.name }}</td>
+            <td>{{ d.vm.cpu }}</td>
+            <td>{{ d.vm.memory }}</td>
+            <td><a href="{% url 'pm_detail' pm_pid=d.pm.pid %}">{{ d.pm.name }}</a></td>
+            <td>
+                {{ d.pm.used_cpu }} / {{ d.pm.cpu }}
+            </td>
+            <td>
+                {{ d.pm.used_mem }} / {{ d.pm.memory }}
+            </td>
+            <td>{{ d.create_on|date:"Y-m-d H:i:s" }}</td>
+            <td>{{ d.method }}</td>
+            <td>{{ d.message }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    <form method="post" action="{% url 'deploying' %}" style="text-align: center">
+        {% csrf_token %}
+        <button type="submit">开始部署</button>
+    </form>
+    <form method="post" action="{% url 'clear' %}" style="text-align: center">
+        {% csrf_token %}
+        <button type="submit">删除数据</button>
+    </form>
+</body>
+</html>

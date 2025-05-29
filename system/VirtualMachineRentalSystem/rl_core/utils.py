@@ -2,25 +2,37 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 
-from config import RainbowConfig
+from django.db.models import Prefetch
+
+from ..models import Deploy, PhysicalMachine, VirtualMachine
 
 
-def sample_from_buffer(buffer, batch_size, use_per=True):
-    if use_per and not RainbowConfig.no_rainbow:
-        # 如果启用 PER（Prioritized Replay）
-        indices, experiences, is_weights = buffer.sample(batch_size)
-    else:
-        # 否则用普通 ReplayBuffer 包装成类似格式
-        states, actions, rewards, next_states = buffer.sample(batch_size)
-        experiences = list(zip(states, actions, rewards, next_states))
-        indices = None
-        is_weights = np.ones((batch_size, 1))  # 等权重
-    return indices, experiences, is_weights
+def iscandeploy(vm, pm_obj):
+    deploy_list = Deploy.objects.filter(pm=pm_obj)
+    if not deploy_list.exists():
+        return True
 
-def isdeploy(vm, pm, develop):
-    used_cpu = sum(v['Cpu'] for v in develop[pm['Pid']])
-    used_mem = sum(v['Mem'] for v in develop[pm['Pid']])
-    if (used_cpu + vm['Cpu'] <= pm['Cpu']) and (used_mem + vm['Mem'] <= pm['Mem']):
+    used_cpu = 0
+    used_mem = 0
+    for deploy in deploy_list:
+        used_cpu += deploy.vm.cpu
+        used_mem += deploy.vm.memory
+    if (used_cpu + vm['Cpu'] <= pm_obj.cpu) and (used_mem + vm['Mem'] <= pm_obj.memory):
+        return True
+    return False
+
+
+def isdeploy(vm_obj, pm_obj):
+    deploy_list = Deploy.objects.filter(pm=pm_obj)
+    if not deploy_list.exists():
+        return True
+
+    used_cpu = 0
+    used_mem = 0
+    for deploy in deploy_list:
+        used_cpu += deploy.vm.cpu
+        used_mem += deploy.vm.memory
+    if (used_cpu + vm_obj.cpu <= pm_obj.cpu) and (used_mem + vm_obj.memory <= pm_obj.memory):
         return True
     return False
 
@@ -29,45 +41,44 @@ def normalize(value, min_val, max_val):
     return (value - min_val) / (max_val - min_val + 1e-8)
 
 
-def get_load(develop, pm_id):
-    return (sum(vm['Cpu'] for vm in develop[pm_id]) + sum(vm['Mem'] for vm in develop[pm_id])) / 2
+def get_load(pm):
+    return (pm.used_cpu + pm.used_mem) / 2
 
 
-def get_cpu_load(develop, pm_id):
-    return sum(vm['Cpu'] for vm in develop[pm_id])
+def print_distribution(name="current state"):
+    pms = PhysicalMachine.objects.prefetch_related(
+        Prefetch('deployments', queryset=Deploy.objects.select_related('vm'))
+    )
 
-
-def get_mem_load(develop, pm_id):
-    return sum(vm['Mem'] for vm in develop[pm_id])
-
-
-def print_distribution(pms, develop, name, num_category):
     plt.figure()
-    category_counts = {pm['Pid']: {i: 0 for i in range(num_category)} for pm in pms}
-    for pm_id, vm_list in develop.items():
-        for vm in vm_list:
-            category_counts[pm_id][vm['Category']] += 1
+    category_counts = {pm.pid.hex: {i: 0 for i in range(3)} for pm in pms}
+
+    for pm in pms:
+        for deploy in pm.deployments.all():
+            vm = deploy.vm
+            if vm and 0 <= vm.category < 3:
+                category_counts[pm.pid.hex][vm.category] += 1
 
     pm_ids = list(category_counts.keys())
     bottom = np.zeros(len(pm_ids))
     cmap = plt.get_cmap('viridis')
-    colors = [cmap(i / num_category) for i in range(num_category)]
+    colors = [cmap(i / 3) for i in range(3)]
 
-    for category in range(num_category):
+    for category in range(3):
         counts = [category_counts[pm_id][category] for pm_id in pm_ids]
         plt.bar(pm_ids, counts, bottom=bottom, color=colors[category], label=f'Category {category}')
         bottom += np.array(counts)
 
     plt.xlabel('Physical Machine ID')
     plt.ylabel('Number of Virtual Machines')
-    plt.title('Number of VMs on Each PM by Category based on {}'.format(name))
+    plt.title(f'Number of VMs on Each PM by Category based on {name}')
+    plt.xticks(rotation=45)
     plt.legend()
+    plt.tight_layout()
     plt.show()
 
 
 def moving_average(a, window_size=9):
-    if isinstance(a[0], torch.Tensor):
-        a = [x.detach().cpu().item() for x in a]
     cumulative_sum = np.cumsum(np.insert(a, 0, 0))
     middle = (cumulative_sum[window_size:] - cumulative_sum[:-window_size]) / window_size
     r = np.arange(1, window_size-1, 2)
@@ -82,32 +93,6 @@ def print_returns(episodes_list, return_list, name, env_name):
     plt.xlabel('Episodes')
     plt.ylabel('Returns')
     plt.title('{0} on {1}'.format(name, env_name))
-    plt.show()
-
-
-def print_utilization(develop, pms, name):
-    cpu_utilization = []
-    mem_utilization = []
-    for pm in pms:
-        cpu_utilization.append(get_cpu_load(develop, pm['Pid']) / pm['Cpu'] * 100)
-        mem_utilization.append(get_mem_load(develop, pm['Pid']) / pm['Mem'] * 100)
-
-    x = range(len(pms))
-    bar_width = 0.35
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
-
-    ax.bar([i - bar_width / 2 for i in x], cpu_utilization, bar_width, label='CPU Utilization', color='b')
-    ax.bar([i + bar_width / 2 for i in x], mem_utilization, bar_width, label='Memory Utilization', color='r')
-
-    ax.set_xlabel('Physical Machine PID')
-    ax.set_ylabel('Utilization Percentage (%)')
-    ax.set_title('CPU and Memory Utilization based on {}'.format(name))
-    ax.legend()
-
-    ax.grid(True, linestyle='--', alpha=0.7)
-
-    plt.tight_layout()
     plt.show()
 
 
@@ -225,36 +210,41 @@ class NoisyLinear(torch.nn.Module):
         return x.sign().mul_(x.abs().sqrt_())
 
 
+def print_utilization(name="current state"):
+    pms = list(PhysicalMachine.objects.prefetch_related(
+        Prefetch('deployments', queryset=Deploy.objects.select_related('vm'))
+    ))
 
+    cpu_utilization = []
+    mem_utilization = []
+    labels = []
 
-# pms = generate_pms(50, (8, 64), (32, 256))
-# vms = generate_vms(200, 64, 256)
-# vms, centers = cluster_vms(vms, 3)
+    for pm in pms:
+        used_cpu = sum(d.vm.cpu for d in pm.deployments.all() if d.vm)
+        used_mem = sum(d.vm.memory for d in pm.deployments.all() if d.vm)
+        total_cpu = pm.cpu
+        total_mem = pm.memory
+        labels.append(pm.name)
 
-# env = VirtualMachineClusterEnv(pms, vms)
-#
-# pm_cpus = [pm['Cpu'] for pm in pms]
-# pm_mems = [pm['Mem'] for pm in pms]
-#
-# plt.scatter(pm_cpus, pm_mems, alpha=0.6)
-# plt.xlabel("CPU Cores")
-# plt.ylabel("Memory (GB)")
-# plt.title("Randomly Generated PMs")
-# plt.show()
-#
-# cpus = [vm['Cpu'] for vm in vms]
-# mems = [vm['Mem'] for vm in vms]
-#
-# plt.scatter(cpus, mems, alpha=0.6)
-# plt.xlabel("CPU Cores")
-# plt.ylabel("Memory (GB)")
-# plt.title("Randomly Generated VMs (Before Clustering)")
-# plt.show()
-#
-# categories = [vm["Category"] for vm in vms]
-# plt.scatter(cpus, mems, c=categories, cmap='viridis', alpha=0.6)
-# plt.xlabel("CPU Cores")
-# plt.ylabel("Memory (GB)")
-# plt.title("VMs After K-means Clustering (3 Categories)")
-# plt.colorbar(label="Category")
-# plt.show()
+        cpu_utilization.append(used_cpu / total_cpu * 100 if total_cpu else 0)
+        mem_utilization.append(used_mem / total_mem * 100 if total_mem else 0)
+
+    x = np.arange(len(pms))
+    bar_width = 0.35
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+
+    ax.bar(x - bar_width / 2, cpu_utilization, bar_width, label='CPU Utilization', color='b')
+    ax.bar(x + bar_width / 2, mem_utilization, bar_width, label='Memory Utilization', color='r')
+
+    ax.set_xlabel('Physical Machine')
+    ax.set_ylabel('Utilization Percentage (%)')
+    ax.set_title(f'CPU and Memory Utilization based on {name}')
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, rotation=45)
+    ax.legend()
+    ax.grid(True, linestyle='--', alpha=0.7)
+
+    plt.tight_layout()
+    plt.show()
+

@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>部署资源图</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <h2 style="text-align:center;">物理机资源使用情况</h2>
+
+    <form method="post" action="{% url 'vms' %}" style="text-align: left">
+        {% csrf_token %}
+        <button type="submit">切换成列表展示</button>
+    </form>
+
+    <form method="post" action="{% url 'login' %}" style="text-align: right">
+        {% csrf_token %}
+        <button type="submit">退出登录</button>
+    </form>
+
+    <canvas id="cpuChart" width="800" height="400"></canvas>
+    <canvas id="memChart" width="800" height="400"></canvas>
+
+    <script>
+        const pmData = {{ data|safe }};
+        const labels = pmData.map(pm => pm.name);
+
+        const cpuUsed = pmData.map(pm => pm.used_cpu);
+        const cpuTotal = pmData.map(pm => pm.total_cpu);
+
+        const memUsed = pmData.map(pm => pm.used_mem);
+        const memTotal = pmData.map(pm => pm.total_mem);
+
+        // CPU 使用图
+        new Chart(document.getElementById('cpuChart'), {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: '已使用 CPU',
+                        backgroundColor: '#ff6384',
+                        data: cpuUsed
+                    },
+                    {
+                        label: '总 CPU',
+                        backgroundColor: '#36a2eb',
+                        data: cpuTotal
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: '物理机 CPU 使用情况'
+                    }
+                },
+                onClick: (event, elements) => {
+                    if (elements.length > 0) {
+                        const index = elements[0].index;
+                        const pmPid = pmData[index].pid;
+                        window.location.href = `/VirtualMachineRentalSystem/main/${pmPid}/`;
+                    }
+                }
+            }
+        });
+
+        // 内存使用图
+        new Chart(document.getElementById('memChart'), {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: '已使用内存',
+                        backgroundColor: '#4bc0c0',
+                        data: memUsed
+                    },
+                    {
+                        label: '总内存',
+                        backgroundColor: '#ffcd56',
+                        data: memTotal
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: '物理机 内存使用情况'
+                    }
+                },
+                onClick: (event, elements) => {
+                    if (elements.length > 0) {
+                        const index = elements[0].index;
+                        const pmPid = pmData[index].pid;
+                        window.location.href = `/VirtualMachineRentalSystem/main/${pmPid}/`;
+                    }
+                }
+            }
+        });
+    </script>
+
+    <form method="post" action="{% url 'deploying' %}" style="text-align: center">
+        {% csrf_token %}
+        <button type="submit">开始部署</button>
+    </form>
+
+    <form method="post" action="{% url 'clear' %}" style="text-align: center">
+        {% csrf_token %}
+        <button type="submit">删除数据</button>
+    </form>
+</body>
+</html>

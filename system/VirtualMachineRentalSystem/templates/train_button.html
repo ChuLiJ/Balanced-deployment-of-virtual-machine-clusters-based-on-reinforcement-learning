@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virtual Machine Rental System</title>
+    <style>
+        /* 全局样式 */
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;  /* 现代字体 */
+            line-height: 1.6;
+            margin: 0;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);  /* 柔和渐变背景 */
+        }
+
+        /* 主容器 */
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        /* 标题样式 */
+        h1 {
+            color: #2c3e50;  /* 深蓝灰色 */
+            text-align: center;
+            font-size: 2.5rem;
+            margin-bottom: 2rem;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.1);  /* 微阴影 */
+        }
+
+        /* 训练面板 */
+        .training-card {
+            background: white;
+            border-radius: 15px;  /* 圆角 */
+            padding: 2.5rem;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);  /* 立体阴影 */
+            transition: transform 0.3s ease;  /* 悬停动画 */
+        }
+
+        .training-card:hover {
+            transform: translateY(-5px);  /* 悬停上移效果 */
+        }
+
+        /* 按钮样式 */
+        .train-btn {
+            display: block;
+            width: 100%;
+            padding: 1.2rem;
+            background: linear-gradient(45deg, #3498db, #2980b9);  /* 渐变按钮 */
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;  /* 大写文字 */
+            letter-spacing: 1px;  /* 字母间距 */
+        }
+
+        .train-btn:hover {
+            background: linear-gradient(45deg, #2980b9, #3498db);
+            box-shadow: 0 5px 15px rgba(41,128,185,0.4);  /* 悬停阴影 */
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 600px) {
+            .container {
+                padding: 1rem;
+            }
+
+            h1 {
+                font-size: 2rem;
+            }
+
+            .training-card {
+                padding: 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>虚拟机租赁系统</h1>
+        <div class="training-card">
+            <form method="post" action="{% url 'train' %}">
+                {% csrf_token %}
+                <button type="submit" class="train-btn">开始迁移</button>
+            </form>
+        </div>
+    </div>
+</body>
+</html>

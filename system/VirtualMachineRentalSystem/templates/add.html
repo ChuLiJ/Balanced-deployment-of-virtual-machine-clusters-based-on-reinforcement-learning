@@ -1,0 +1,97 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+    <meta charset="UTF-8">
+    <title>艾梵智进(AiVance)智能管理平台</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+        header {
+            background-image: url("{% static 'image/background.png' %}");
+            background-size: cover;
+            height: 180px;
+            color: white;
+            display: flex;
+            align-items: center;
+            padding-left: 2rem;
+            font-size: 1.8rem;
+            font-weight: bold;
+        }
+        .nav-link {
+            font-size: 1.1rem;
+        }
+        .card {
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        }
+    </style>
+</head>
+<body>
+
+<header style="text-align: center;">
+    艾梵智进(AiVance)智能管理平台
+</header>
+
+<div class="container mt-4">
+
+    <div class="d-flex justify-content-between align-items-center">
+        <div class="alert alert-info mb-3" role="alert">
+            👋 欢迎，尊敬的用户，今天是 {% now "Y年n月j日 l" %}
+        </div>
+        <a href="{% url 'login' %}" class="btn btn-outline-danger">退出登录</a>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-md-2">
+            <ul class="list-group">
+                <a href="{% url 'dashboard' %}" class="list-group-item list-group-item-action">📊 系统概览</a>
+                <a href="{% url 'pms' %}" class="list-group-item list-group-item-action">🖥️ 物理机资源统计</a>
+                <a href="{% url 'vms' %}" class="list-group-item list-group-item-action">💻 虚拟机资源统计</a>
+                <a href="{% url 'vms' %}" class="list-group-item list-group-item-action">🔄 资源调度</a>
+                <a href="{% url 'profile' %}" class="list-group-item list-group-item-action">👤 个人信息</a>
+                <a href="{% url 'vms' %}" class="list-group-item list-group-item-action">📋 日志记录</a>
+                <a href="{% url 'vms' %}" class="list-group-item list-group-item-action">⚙️ 系统设置</a>
+            </ul>
+        </div>
+
+        <div class="col-md-10">
+            <div class="card p-4">
+                <h4 class="card-title mb-3">🛠️ 部署虚拟机到物理机：{{ pm.name }}</h4>
+                <p class="text-muted">可用资源：CPU {{ pm.available_cpu }} 核 / 内存 {{ pm.available_memory }} GB</p>
+
+                <form method="post" action="{% url 'adding' pm_pid=pm.pid %}">
+                    {% csrf_token %}
+                    <div class="row mb-3">
+                        <div class="col">
+                            <label for="cpu" class="form-label">虚拟机 CPU (核)</label>
+                            <input type="number" class="form-control" id="cpu" name="cpu" min="1" max="{{ pm.available_cpu }}" required>
+                        </div>
+                        <div class="col">
+                            <label for="memory" class="form-label">虚拟机 内存 (GB)</label>
+                            <input type="number" class="form-control" id="memory" name="memory" min="1" max="{{ pm.available_memory }}" required>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="vm_name" class="form-label">虚拟机名称</label>
+                        <input type="text" class="form-control" id="vm_name" name="vm_name" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="remarks" class="form-label">备注信息（可选）</label>
+                        <textarea class="form-control" id="remarks" name="remarks" rows="2"></textarea>
+                    </div>
+
+                    <button type="submit" class="btn btn-success">🚀 部署虚拟机</button>
+                </form>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+</body>
+</html>

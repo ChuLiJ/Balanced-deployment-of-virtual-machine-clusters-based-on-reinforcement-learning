@@ -6,8 +6,8 @@ import numpy as np
 
 from collections import deque
 
-from utils import SumTree, NoisyLinear
-from config import RainbowConfig
+from .utils import SumTree, NoisyLinear, compute_advantage
+
 
 class NStepBuffer:
     def __init__(self, n, gamma):
@@ -104,8 +104,6 @@ class ReplayBuffer:
     def size(self):
         return len(self.buffer)
 
-    def update_priorities(self, *args, **kwargs):
-        pass
 
 class QNet(torch.nn.Module):
     def __init__(self, state_dim, action_dim, device):
@@ -182,65 +180,6 @@ class RainbowQNet(DuelingQNet):
         return Q
 
 
-class RainbowNoDuelingQNet(torch.nn.Module):
-    def __init__(self, state_dim, action_dim, atoms, device):
-        super(RainbowNoDuelingQNet, self).__init__()
-        self.atoms = atoms
-        self.action_dim = action_dim
-
-        self.fc1 = NoisyLinear(state_dim, 128)
-        self.fc2 = NoisyLinear(128, 128)
-        self.fc3 = NoisyLinear(128, action_dim * atoms)
-
-        self.to(device)
-
-    def forward(self, x):
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        q_atoms = self.fc3(x)
-        q_atoms = q_atoms.view(-1, self.action_dim, self.atoms)
-        return q_atoms
-
-    def reset_noisy(self):
-        self.fc1.reset_noise()
-        self.fc2.reset_noise()
-        self.fc3.reset_noise()
-
-
-class RainbowNoNoisyQNet(torch.nn.Module):
-    def __init__(self, state_dim, action_dim, atoms, device):
-        super(RainbowNoNoisyQNet, self).__init__()
-        self.atoms = atoms
-        self.action_dim = action_dim
-
-        self.fc1 = torch.nn.Linear(state_dim, 128)
-        self.fc2 = torch.nn.Linear(128, 64)
-
-        self.V_stream = torch.nn.Linear(64, 64)
-        self.A_stream = torch.nn.Linear(64, 64)
-
-        self.V = torch.nn.Linear(64, atoms)
-        self.A = torch.nn.Linear(64, action_dim * atoms)
-
-        self.to(device)
-
-    def forward(self, x):
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-
-        V = F.relu(self.V_stream(x))
-        V = self.V(V)
-
-        A = F.relu(self.A_stream(x))
-        A = self.A(A).view(-1, self.action_dim, self.atoms)
-
-        Q = V.unsqueeze(1) + (A - A.mean(dim=1, keepdim=True))
-        return Q
-
-    def reset_noisy(self):
-        pass
-
-
 class ConvolutionalQnet(torch.nn.Module):
     def __init__(self, state_dim, action_dim, device):
         super(ConvolutionalQnet, self).__init__()
@@ -265,7 +204,6 @@ class DQN:
         self.q_net = QNet(state_dim, self.action_dim, device).to(device)
         self.target_q_net = QNet(state_dim, self.action_dim, device).to(device)
         self.optimizer = torch.optim.Adam(self.q_net.parameters(), lr=learning_rate)
-        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, mode='min', factor=0.5, patience=5)
         self.gamma = gamma
         self.epsilon = epsilon
         self.target_update = target_update
@@ -300,7 +238,6 @@ class DQN:
         if self.count % self.target_update == 0:
             self.target_q_net.load_state_dict(self.q_net.state_dict())
 
-        self.scheduler.step(loss)
         return loss.item()
 
 
@@ -340,7 +277,6 @@ class DDDQN(DoubleDQN):
         self.q_net = DuelingQNet(state_dim, action_dim, device=device).to(device)
         self.target_q_net = DuelingQNet(state_dim, action_dim, device=device).to(device)
         self.optimizer = torch.optim.Adam(self.q_net.parameters(), lr=learning_rate)
-        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, mode='min', factor=0.5, patience=5)
 
     def take_action(self, state, epsilon=None):
         state = np.array(state)
@@ -357,13 +293,9 @@ class DDDQN(DoubleDQN):
         q_values = self.q_net(states).gather(1, actions)
 
         with torch.no_grad():
-            if RainbowConfig.use_double_dqn:
-                next_actions = self.q_net(next_states).argmax(dim=1, keepdims=True)
-                max_next_q_values = self.target_q_net(next_states).gather(1, next_actions)
-                q_targets = rewards + self.gamma * max_next_q_values
-            else:
-                max_next_q_values = self.target_q_net(next_states).max(1)[0].view(-1, 1)
-                q_targets = rewards + self.gamma * max_next_q_values
+            next_actions = self.q_net(next_states).argmax(dim=1, keepdims=True)  # 与普通DQN不同的地方
+            max_next_q_values = self.target_q_net(next_states).gather(1, next_actions)
+            q_targets = rewards + self.gamma * max_next_q_values
 
         td_errors = (q_targets - q_values).detach().cpu().numpy().flatten()
 
@@ -380,8 +312,6 @@ class DDDQN(DoubleDQN):
         self.q_net.reset_noisy()
         self.target_q_net.reset_noisy()
 
-        self.scheduler.step(loss)
-
         return loss.item(), td_errors
 
 
@@ -394,37 +324,18 @@ class RainbowDQN(DDDQN):
         self.atoms = atoms
         self.delta_z = (v_max - v_min) / (atoms - 1)
         self.support = torch.linspace(v_min, v_max, atoms).to(device)
-        if RainbowConfig.use_dueling_dqn and RainbowConfig.use_noisy_net:
-            self.q_net = RainbowQNet(state_dim, action_dim, atoms, device)
-            self.target_q_net = RainbowQNet(state_dim, action_dim, atoms, device)
-        elif RainbowConfig.use_noisy_net and not RainbowConfig.use_dueling_dqn:
-            self.q_net = RainbowNoDuelingQNet(state_dim, action_dim, atoms, device)
-            self.target_q_net = RainbowNoDuelingQNet(state_dim, action_dim, atoms, device)
-        else:
-            self.q_net = RainbowNoNoisyQNet(state_dim, action_dim, atoms, device)
-            self.target_q_net = RainbowNoNoisyQNet(state_dim, action_dim, atoms, device)
+        self.q_net = RainbowQNet(state_dim, action_dim, atoms, device)
+        self.target_q_net = RainbowQNet(state_dim, action_dim, atoms, device)
         self.optimizer = torch.optim.Adam(self.q_net.parameters(), lr=learning_rate)
         self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, mode='min', factor=0.5, patience=5)
 
-    def take_action(self, state, epsilon=0.01):
-        if RainbowConfig.use_noisy_net:
-            state = torch.tensor(state, dtype=torch.float).unsqueeze(0).to(self.device)
-            with torch.no_grad():
-                logits = self.q_net(state)
-                probs = F.softmax(logits, dim=-1)
-                q_values = torch.sum(probs * self.support, dim=-1)
-            return q_values.argmax().item()
-        else:
-            if np.random.rand() < epsilon:
-                return np.random.randint(self.action_dim)
-            else:
-                state = torch.tensor(state, dtype=torch.float).unsqueeze(0).to(self.device)
-                with torch.no_grad():
-                    logits = self.q_net(state)  # [1, action_dim, atoms]
-                    probs = F.softmax(logits, dim=-1)
-                    q_values = torch.sum(probs * self.support, dim=-1)  # [1, action_dim]
-                return q_values.argmax().item()
-
+    def take_action(self, state, epsilon=None):
+        state = torch.tensor(state, dtype=torch.float).unsqueeze(0).to(self.device)
+        with torch.no_grad():
+            logits = self.q_net(state)
+            probs = F.softmax(logits, dim=-1)
+            q_values = torch.sum(probs * self.support, dim=-1)
+        return q_values.argmax().item()
 
     def update(self, batch):
         states = torch.tensor(batch["states"], dtype=torch.float).to(self.device)
@@ -444,10 +355,7 @@ class RainbowDQN(DDDQN):
             next_q = torch.sum(next_probs * self.support, dim=-1)
             next_actions = next_q.argmax(dim=1)
 
-            if RainbowConfig.use_double_dqn:
-                target_next_logits = self.target_q_net(next_states)
-            else:
-                target_next_logits = self.q_net(next_states)
+            target_next_logits = self.target_q_net(next_states)
             target_next_probs = F.softmax(target_next_logits, dim=-1)
             next_actions = next_actions.view(batch_size, 1, 1).expand(-1, 1, self.atoms)
             target_next_probs = target_next_probs.gather(1, next_actions).squeeze(1)
@@ -498,3 +406,108 @@ class RainbowDQN(DDDQN):
 
         return loss.item(), td_errors
 
+
+class PolicyNet(torch.nn.Module):
+    def __init__(self, state_dim, device):
+        super(PolicyNet, self).__init__()
+        self.fc1 = torch.nn.Linear(state_dim, 64)
+        self.fc2 = torch.nn.Linear(64, 128)
+        self.fc3 = torch.nn.Linear(128, 128)
+        self.fc4 = torch.nn.Linear(128, 64)
+        self.fc5 = torch.nn.Linear(64, 3)
+        self.log_std = torch.nn.Parameter(torch.zeros(3))
+        self.to(device)
+
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        x1 = F.relu(self.fc2(x))
+        x2 = F.relu(self.fc3(x1) + x1)
+        x3 = F.relu(self.fc4(x2))
+        out = self.fc5(x3)
+        mu = F.sigmoid(out)
+        std = torch.exp(self.log_std.clamp(-20, 2))
+        return mu, std
+
+
+class ValueNet(torch.nn.Module):
+    def __init__(self, state_dim, device):
+        super(ValueNet, self).__init__()
+        self.fc1 = torch.nn.Linear(state_dim, 64)
+        self.fc2 = torch.nn.Linear(64, 128)
+        self.fc3 = torch.nn.Linear(128, 128)
+        self.fc4 = torch.nn.Linear(128, 64)
+        self.fc5 = torch.nn.Linear(64, 1)
+        self.to(device)
+
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        x1 = F.relu(self.fc2(x))
+        x2 = F.relu(self.fc3(x1) + x1)
+        x3 = F.relu(self.fc4(x2))
+        return self.fc5(x3)
+
+
+class PPO:
+    def __init__(self, state_dim, actor_lr, critic_lr, lmbda, epochs, eps, gamma, device):
+        self.actor = PolicyNet(state_dim, device)
+        self.critic = ValueNet(state_dim, device)
+        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)
+        self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=critic_lr)
+        self.gamma = gamma
+        self.lmbda = lmbda
+        self.epochs = epochs
+        self.eps = eps
+        self.device = device
+        self.actor_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.actor_optimizer, mode='min', factor=0.5,
+                                                                          patience=5)
+        self.critic_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.critic_optimizer, mode='min', factor=0.5
+                                                                           , patience=5)
+
+    def take_action(self, state):
+        state = torch.tensor([state], dtype=torch.float).to(self.device)
+        mu, std = self.actor(state)
+        action_dict = torch.distributions.Normal(mu, std)
+        action = action_dict.rsample()
+        action = torch.clamp(action, 0.0, 1.0)
+        return action.squeeze().tolist()
+
+    def update(self, transition_dict):
+        states = torch.tensor(transition_dict['states'], dtype=torch.float).to(self.device)
+        actions = torch.tensor(transition_dict['actions'], dtype=torch.float).to(self.device)
+        rewards = torch.tensor(transition_dict['rewards'], dtype=torch.float).view(-1, 1).to(self.device)
+        next_states = torch.tensor(transition_dict['next_states'], dtype=torch.float).to(self.device)
+
+        td_target = rewards + self.gamma * self.critic(next_states)
+        td_delta = td_target - self.critic(states)
+        advantage = compute_advantage(self.gamma, self.lmbda, td_delta.cpu()).to(self.device)
+
+        with torch.no_grad():
+            mu, std = self.actor(states)
+            old_dist = torch.distributions.Normal(mu, std)
+            old_log_probs = old_dist.log_prob(actions).sum(dim=-1, keepdim=True)
+
+        for _ in range(self.epochs):
+            mu, std = self.actor(states)
+            dist = torch.distributions.Normal(mu, std)
+            log_probs = dist.log_prob(actions).sum(dim=-1, keepdim=True)
+            ratio = torch.exp(log_probs - old_log_probs)
+
+            surr1 = ratio * advantage
+            surr2 = torch.clamp(ratio, 1 - self.eps, 1 + self.eps) * advantage
+            actor_loss = torch.mean(-torch.min(surr1, surr2))
+            critic_loss = torch.mean(F.mse_loss(self.critic(states), td_target.detach()))
+
+            self.actor_optimizer.zero_grad()
+            self.critic_optimizer.zero_grad()
+            actor_loss.backward()
+            critic_loss.backward()
+            self.actor_optimizer.step()
+            self.critic_optimizer.step()
+
+            torch.nn.utils.clip_grad_norm_(self.actor.parameters(), max_norm=0.5)
+            torch.nn.utils.clip_grad_norm_(self.critic.parameters(), max_norm=0.5)
+
+        self.actor_scheduler.step(actor_loss)
+        self.critic_scheduler.step(critic_loss)
+
+        return actor_loss, critic_loss
