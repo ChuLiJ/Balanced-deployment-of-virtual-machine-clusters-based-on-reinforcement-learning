@@ -12,23 +12,8 @@ from PPO import PPO
 from reward import Reward
 from utils import print_distribution, moving_average, print_returns, print_utilization, sample_from_buffer
 from contrast import greedy_migration
-from config import RainbowConfig
+from config import RainbowConfig, Config
 
-# 设定超参数
-lr = 1e-3
-actor_lr = 1e-3
-critic_lr = 1e-3
-num_episodes = 1000
-num_per_episodes = 100
-hidden_dim = 128
-gamma = 0.98
-lmbda = 0.95
-epochs = 10
-eps = 0.2
-
-epsilon = 0.5
-decay = 0.995
-min_epsilon = 0.01
 
 # time_array = np.zeros(10)
 # reward_array = np.zeros(10)
@@ -53,38 +38,31 @@ if not RainbowConfig.use_multi_step:
     n_step = 1
 else:
     n_step = 3
-target_update = 10
-buffer_size = 10000
-minimal_size = 100
-batch_size = 64
-device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
-num_pms = 100
-num_vms = 400
-pm_cpu_range = (32, 128)
-pm_mem_range = (128, 512)
-
-pms = generate_pms(num_pms, pm_cpu_range, pm_mem_range)
-vms = generate_vms(num_vms)
+pms = generate_pms(Config.num_pms, Config.pm_cpu_range, Config.pm_mem_range)
+vms = generate_vms(Config.num_vms)
 vms, centers = cluster_vms(vms, 3)
 
 env = VirtualMachineClusterEnv(pms, vms)
 env_name = "VirtualMachineCluster"
 
 if RainbowConfig.use_prioritized_replay:
-    replay_buffer = PrioritizedReplayBuffer(capacity=buffer_size)
+    replay_buffer = PrioritizedReplayBuffer(capacity=Config.buffer_size)
 else:
-    replay_buffer = ReplayBuffer(capacity=buffer_size)
-n_step_buffer = NStepBuffer(n_step, gamma=gamma)
+    replay_buffer = ReplayBuffer(capacity=Config.buffer_size)
+n_step_buffer = NStepBuffer(n_step, gamma=Config.gamma)
 
 state_dim = len(env.get_state(env.develop))
 action_dim = 5
 
 if RainbowConfig.use_distributional_rl:
-    agent_dqn = RainbowDQN(state_dim, action_dim, lr, gamma, epsilon, target_update, device)
+    agent_dqn = RainbowDQN(state_dim, action_dim, Config.lr, Config.gamma, Config.epsilon, Config.target_update,
+                           Config.device)
 else:
-    agent_dqn = DDDQN(state_dim, action_dim, lr, gamma, epsilon, target_update, device)
-agent_ppo = PPO(state_dim, actor_lr, critic_lr, lmbda, epochs, eps, gamma, device)
+    agent_dqn = DDDQN(state_dim, action_dim, Config.lr, Config.gamma, Config.epsilon, Config.target_update,
+                      Config.device)
+agent_ppo = PPO(state_dim, Config.actor_lr, Config.critic_lr, Config.lmbda, Config.epochs, Config.eps, Config.gamma,
+                Config.device)
 
 print_distribution(pms, env.get_develop(), 'Initialization', 3)
 print_utilization(env.get_develop(), pms, 'Initialization')
@@ -101,17 +79,17 @@ start_time = time.time()
 for i in range(1):
     if flag:
         break
-    with tqdm(total=int(num_episodes / 10), desc=f'Iteration {i+1}') as pbar:
+    with tqdm(total=int(Config.num_episodes / 10), desc=f'Iteration {i+1}') as pbar:
         if flag:
             break
-        for i_episode in range(int(num_episodes / 10)):
+        for i_episode in range(int(Config.num_episodes / 10)):
             episode_return = 0
 
             state = env.get_state()
 
             trajectory = {}
             trajectory_queue = []
-            for _ in range(num_per_episodes):
+            for _ in range(Config.num_per_episodes):
                 action_dqn = agent_dqn.take_action(state)
                 action_ppo = agent_ppo.take_action(state)
 
@@ -141,15 +119,15 @@ for i in range(1):
                     flag = True
                     break
 
-                if replay_buffer.size() > minimal_size:
-                    indices, batch, is_weights = sample_from_buffer(replay_buffer, batch_size,
+                if replay_buffer.size() > Config.minimal_size:
+                    indices, batch, is_weights = sample_from_buffer(replay_buffer, Config.batch_size,
                                                                     RainbowConfig.use_prioritized_replay)
                     b_s = [exp[0] for exp in batch]
                     b_a = [exp[1] for exp in batch]
                     b_r = [exp[2] for exp in batch]
                     b_ns = [exp[3] for exp in batch]
 
-                    is_weights = torch.tensor(is_weights, dtype=torch.float).view(-1, 1).to(device)
+                    is_weights = torch.tensor(is_weights, dtype=torch.float).view(-1, 1).to(Config.device)
 
                     transition_dict = {
                         'states': b_s,
@@ -179,7 +157,7 @@ for i in range(1):
 
             if (i_episode + 1) % 10 == 0:
                 pbar.set_postfix({
-                    'episode': '%d' % (num_episodes / 10 * i + i_episode + 1),
+                    'episode': '%d' % (Config.num_episodes / 10 * i + i_episode + 1),
                     'return': '%.3f' % np.mean(return_list[-10:])
                 })
             pbar.update(1)
